@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"sort"
 )
 
 var benchRealData = false
@@ -146,5 +147,41 @@ func BenchmarkRealDataParOr(b *testing.B) {
 func BenchmarkRealDataFastOr(b *testing.B) {
 	benchmarkRealDataAggregate(b, func(bitmaps []*Bitmap) uint64 {
 		return FastOr(bitmaps...).GetCardinality()
+	})
+}
+
+func BenchmarkRealDataSortBeforeFastOr(b *testing.B) {
+	dataset := "dimension_003"
+
+	bitmaps, err := retrieveRealDataBitmaps(dataset, true)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.Run("baseline", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			ParOr(0, bitmaps...).GetCardinality()
+		}
+	})
+
+	sort.Slice(bitmaps, func(i, j int) bool {
+		return bitmaps[i].GetCardinality() < bitmaps[j].GetCardinality()
+	})
+
+	b.Run("ascending", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			ParOr(0, bitmaps...).GetCardinality()
+		}
+	})
+
+	// Reverse order
+	for i, j := 0, len(bitmaps)-1; i < j; i, j = i+1, j-1 {
+		bitmaps[i], bitmaps[j] = bitmaps[j], bitmaps[i]
+	}
+
+	b.Run("descending", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			ParOr(0, bitmaps...).GetCardinality()
+		}
 	})
 }
