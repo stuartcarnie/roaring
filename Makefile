@@ -1,11 +1,21 @@
-.PHONY: help all test format fmtcheck vet lint     qa deps clean nuke rle backrle ser fetch-real-roaring-datasets
+# this converts rotate instructions from "ro[lr] <reg>" -> "ro[lr] <reg>, 1" for yasm compatibility
+PERL_FIXUP_ROTATE=perl -i -pe 's/(ro[rl]\s+\w{2,3})$$/\1, 1/'
+
+C2GOASM?=c2goasm
+C2GOASM_ARGS=-a -f
+CC=clang
+C_FLAGS=-target x86_64-unknown-none -masm=intel -mno-red-zone -mstackrealign -mllvm -inline-threshold=1000 -fno-asynchronous-unwind-tables \
+	-fno-exceptions -fno-rtti -O3 -fno-builtin -ffast-math -fno-jump-tables -I_lib
+ASM_FLAGS_AVX2=-mavx2 -mfma -mllvm -force-vector-width=4
+# ASM_FLAGS_AVX2=-mavx2 -mfma -mllvm -force-vector-width=32
+ASM_FLAGS_SSE3=-msse3
+ASM_FLAGS_SSE4=-msse4
+
+INTEL_SOURCES := \
+	popcnt_slice_avx2_amd64.s popcnt_slice_sse4_amd64.s
 
 
-
-
-
-
-
+.PHONY: help all test format fmtcheck vet lint     qa deps clean nuke rle backrle ser fetch-real-roaring-datasets assembly
 
 # Display general help about this command
 help:
@@ -107,3 +117,17 @@ fetch-real-roaring-datasets:
 	# pull github.com/RoaringBitmap/real-roaring-datasets -> testdata/real-roaring-datasets
 	git submodule init
 	git submodule update
+
+assembly: $(INTEL_SOURCES)
+
+_lib/popcnt_slice_avx2.s: _lib/popcnt_slice.c
+	$(CC) -S $(C_FLAGS) $(ASM_FLAGS_AVX2) $^ -o $@ ; $(PERL_FIXUP_ROTATE) $@
+
+popcnt_slice_avx2_amd64.s: _lib/popcnt_slice_avx2.s
+	$(C2GOASM) $(C2GOASM_ARGS) $^ $@
+
+_lib/popcnt_slice_sse4.s: _lib/popcnt_slice.c
+	$(CC) -S $(C_FLAGS) $(ASM_FLAGS_SSE4) $^ -o $@ ; $(PERL_FIXUP_ROTATE) $@
+
+popcnt_slice_sse4_amd64.s: _lib/popcnt_slice_sse4.s
+	$(C2GOASM) $(C2GOASM_ARGS) $^ $@
